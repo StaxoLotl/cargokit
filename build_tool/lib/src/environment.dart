@@ -20,6 +20,7 @@ class Environment {
 
   /// Path to the crate manifest (containing Cargo.toml).
   static String get manifestDir => _getEnvPath('CARGOKIT_MANIFEST_DIR');
+  static String? get packageName => _getEnv('CARGOKIT_PACKAGE_NAME');
 
   /// Directory inside root project. Not necessarily root folder. Symlinks are
   /// not resolved on purpose.

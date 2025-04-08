@@ -280,7 +280,8 @@ class CargokitUserOptions {
   }
 
   static CargokitUserOptions load() {
-    String fileName = "cargokit_options.yaml";
+    final packageName = Environment.packageName;
+    String fileName = "${packageName ?? "cargokit"}_options.yaml";
     var userProjectDir = Directory(Environment.rootProjectDir);
 
     while (userProjectDir.parent.path != userProjectDir.path) {
