@@ -237,11 +237,13 @@ class CargokitUserOptions {
   CargokitUserOptions({
     required this.usePrecompiledBinaries,
     required this.verboseLogging,
+    required this.enabledFeatures,
   });
 
   CargokitUserOptions._()
       : usePrecompiledBinaries = defaultUsePrecompiledBinaries(),
-        verboseLogging = false;
+        verboseLogging = false,
+        enabledFeatures = [];
 
   static CargokitUserOptions parse(YamlNode node) {
     if (node is! YamlMap) {
@@ -249,7 +251,7 @@ class CargokitUserOptions {
     }
     bool usePrecompiledBinaries = defaultUsePrecompiledBinaries();
     bool verboseLogging = false;
-
+    List<String> enabledFeatures = [];
     for (final entry in node.nodes.entries) {
       if (entry.key case YamlScalar(value: 'use_precompiled_binaries')) {
         if (entry.value case YamlScalar(value: bool value)) {
@@ -267,6 +269,18 @@ class CargokitUserOptions {
         throw SourceSpanException(
             'Invalid value for "verbose_logging". Must be a boolean.',
             entry.value.span);
+      } else if (entry.key case YamlScalar(value: 'features')) {
+        // Parse features
+        if (entry.value case YamlList(nodes: List<YamlNode> nodes)) {
+          enabledFeatures = nodes
+              .whereType<YamlScalar>()
+              .map((node) => node.value as String)
+              .toList();
+          continue;
+        }
+        throw SourceSpanException(
+            'Invalid value for "features". Must be a list of features.',
+            entry.value.span);
       } else {
         throw SourceSpanException(
             'Unknown cargokit option type. Must be "use_precompiled_binaries" or "verbose_logging".',
@@ -276,6 +290,7 @@ class CargokitUserOptions {
     return CargokitUserOptions(
       usePrecompiledBinaries: usePrecompiledBinaries,
       verboseLogging: verboseLogging,
+      enabledFeatures: enabledFeatures,
     );
   }
 
@@ -304,4 +319,5 @@ class CargokitUserOptions {
 
   final bool usePrecompiledBinaries;
   final bool verboseLogging;
+  final List<String> enabledFeatures;
 }
