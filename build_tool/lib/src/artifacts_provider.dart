@@ -61,7 +61,7 @@ class ArtifactProvider {
     }
 
     final rustup = Rustup();
-    for (final target in targets) {
+    for (final target in pendingTargets) {
       final builder = RustBuilder(target: target, environment: environment);
       builder.prepare(rustup);
       _log.info('Building ${environment.crateInfo.packageName} for $target');
@@ -93,6 +93,37 @@ class ArtifactProvider {
     return result;
   }
 
+  List<String> _generatePossibleArtifactNames(
+    Target target,
+    String libraryName,
+    List<String> features,
+  ) {
+    final baseNames = getArtifactNames(
+      target: target,
+      libraryName: libraryName,
+      remote: true,
+    );
+
+    // If no features, return base names
+    if (features.isEmpty) {
+      return baseNames;
+    }
+
+    // Generate feature-specific and base names
+    // Sort features to ensure consistent naming
+    final sortedFeatures = [...features]..sort();
+    final featureNames = baseNames
+        .expand((baseName) => [
+              // Feature-specific name first for priority
+              '${baseName}_features_${sortedFeatures.join("_")}',
+              // Base name (no features) as fallback
+              baseName,
+            ])
+        .toList();
+
+    return featureNames;
+  }
+
   Future<Map<Target, List<Artifact>>> _getPrecompiledArtifacts(
       List<Target> targets) async {
     if (userOptions.usePrecompiledBinaries == false) {
@@ -105,8 +136,11 @@ class ArtifactProvider {
     }
 
     final start = Stopwatch()..start();
-    final crateHash = CrateHash.compute(environment.manifestDir,
-        tempStorage: environment.targetTempDir);
+    final crateHash = CrateHash.compute(
+      environment.manifestDir,
+      tempStorage: environment.targetTempDir,
+      features: userOptions.enabledFeatures,
+    );
     _log.fine(
         'Computed crate hash $crateHash in ${start.elapsedMilliseconds}ms');
 
@@ -117,65 +151,69 @@ class ArtifactProvider {
     final res = <Target, List<Artifact>>{};
 
     for (final target in targets) {
-      final requiredArtifacts = getArtifactNames(
+      final possibleArtifacts = _generatePossibleArtifactNames(
+        target,
+        environment.crateInfo.packageName,
+        userOptions.enabledFeatures,
+      );
+
+      final artifactsForTarget = <Artifact>[];
+      final requiredBaseArtifacts = getArtifactNames(
         target: target,
         libraryName: environment.crateInfo.packageName,
         remote: true,
       );
-      final artifactsForTarget = <Artifact>[];
 
-      for (final artifact in requiredArtifacts) {
+      // Try to download each possible artifact
+      for (final artifact in possibleArtifacts) {
         final fileName = PrecompileBinaries.fileName(target, artifact);
         final downloadedPath = path.join(downloadedArtifactsDir, fileName);
+
         if (!File(downloadedPath).existsSync()) {
           final signatureFileName =
               PrecompileBinaries.signatureFileName(target, artifact);
-          await _tryDownloadArtifacts(
-            crateHash: crateHash,
-            fileName: fileName,
-            signatureFileName: signatureFileName,
-            finalPath: downloadedPath,
-          );
+
+          try {
+            await _tryDownloadArtifacts(
+              crateHash: crateHash,
+              fileName: fileName,
+              signatureFileName: signatureFileName,
+              finalPath: downloadedPath,
+            );
+          } catch (e) {
+            // Log download failure but continue with other artifacts
+            _log.fine('Failed to download artifact $fileName: $e');
+            continue;
+          }
         }
+
         if (File(downloadedPath).existsSync()) {
+          // Extract the base name without features
+          final baseArtifactName = artifact.contains('_features_')
+              ? artifact.substring(0, artifact.indexOf('_features_'))
+              : artifact;
+
           artifactsForTarget.add(Artifact(
             path: downloadedPath,
-            finalFileName: artifact,
+            finalFileName: baseArtifactName, // Always use base name for output
           ));
-        } else {
-          break;
         }
       }
 
-      // Only provide complete set of artifacts.
-      if (artifactsForTarget.length == requiredArtifacts.length) {
-        _log.fine('Found precompiled artifacts for $target');
+      // Only consider this target satisfied if we have all required base artifacts
+      final foundBaseArtifacts =
+          artifactsForTarget.map((a) => a.finalFileName).toSet();
+
+      if (requiredBaseArtifacts.every(foundBaseArtifacts.contains)) {
+        _log.fine('Found complete set of precompiled artifacts for $target');
         res[target] = artifactsForTarget;
+      } else if (artifactsForTarget.isNotEmpty) {
+        _log.warning(
+            'Found incomplete set of precompiled artifacts for $target, will build from source');
       }
     }
 
     return res;
-  }
-
-  static Future<Response> _get(Uri url, {Map<String, String>? headers}) async {
-    int attempt = 0;
-    const maxAttempts = 10;
-    while (true) {
-      try {
-        return await get(url, headers: headers);
-      } on SocketException catch (e) {
-        // Try to detect reset by peer error and retry.
-        if (attempt++ < maxAttempts &&
-            (e.osError?.errorCode == 54 || e.osError?.errorCode == 10054)) {
-          _log.severe(
-              'Failed to download $url: $e, attempt $attempt of $maxAttempts, will retry...');
-          await Future.delayed(Duration(seconds: 1));
-          continue;
-        } else {
-          rethrow;
-        }
-      }
-    }
   }
 
   Future<void> _tryDownloadArtifacts({
@@ -211,6 +249,27 @@ class ArtifactProvider {
       File(finalPath).writeAsBytesSync(res.bodyBytes);
     } else {
       _log.shout('Signature verification failed! Ignoring binary.');
+    }
+  }
+
+  static Future<Response> _get(Uri url, {Map<String, String>? headers}) async {
+    int attempt = 0;
+    const maxAttempts = 10;
+    while (true) {
+      try {
+        return await get(url, headers: headers);
+      } on SocketException catch (e) {
+        // Try to detect reset by peer error and retry.
+        if (attempt++ < maxAttempts &&
+            (e.osError?.errorCode == 54 || e.osError?.errorCode == 10054)) {
+          _log.severe(
+              'Failed to download $url: $e, attempt $attempt of $maxAttempts, will retry...');
+          await Future.delayed(Duration(seconds: 1));
+          continue;
+        } else {
+          rethrow;
+        }
+      }
     }
   }
 }

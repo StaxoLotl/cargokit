@@ -14,16 +14,19 @@ class CrateHash {
   ///
   /// If [tempStorage] is provided, computed hash is stored in a file in that directory
   /// and reused on subsequent calls if the crate content hasn't changed.
-  static String compute(String manifestDir, {String? tempStorage}) {
+  static String compute(String manifestDir,
+      {String? tempStorage, List<String> features = const []}) {
     return CrateHash._(
       manifestDir: manifestDir,
       tempStorage: tempStorage,
+      features: features,
     )._compute();
   }
 
   CrateHash._({
     required this.manifestDir,
     required this.tempStorage,
+    this.features = const [],
   });
 
   String _compute() {
@@ -62,6 +65,13 @@ class CrateHash {
       input.add(data.buffer.asUint8List());
     }
 
+    // Add features to the quick hash
+    if (features.isNotEmpty) {
+      // Sort features to ensure consistent hash regardless of list order
+      final sortedFeatures = [...features]..sort();
+      input.add(utf8.encode('features:${sortedFeatures.join(',')}'));
+    }
+
     input.close();
     return base64Url.encode(output.events.single.bytes);
   }
@@ -69,7 +79,12 @@ class CrateHash {
   String _computeHash(List<File> files) {
     final output = AccumulatorSink<Digest>();
     final input = sha256.startChunkedConversion(output);
-
+    // Add features to the hash computation
+    if (features.isNotEmpty) {
+      // Sort features to ensure consistent hash regardless of list order
+      final sortedFeatures = [...features]..sort();
+      input.add(utf8.encode('manifest_features:${sortedFeatures.join(',')}'));
+    }
     void addTextFile(File file) {
       // text Files are hashed by lines in case we're dealing with github checkout
       // that auto-converts line endings.
@@ -118,4 +133,5 @@ class CrateHash {
 
   final String manifestDir;
   final String? tempStorage;
+  final List<String> features;
 }

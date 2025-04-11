@@ -136,6 +136,13 @@ class RustBuilder {
   Future<String> build() async {
     final extraArgs = _buildOptions?.flags ?? [];
     final manifestPath = path.join(environment.manifestDir, 'Cargo.toml');
+    final userOptions = CargokitUserOptions.load();
+    final featureArgs = <String>[];
+
+    // Add user-specified features
+    if (userOptions.enabledFeatures.isNotEmpty) {
+      featureArgs.addAll(['--features', userOptions.enabledFeatures.join(',')]);
+    }
     runCommand(
       'rustup',
       [
@@ -153,6 +160,7 @@ class RustBuilder {
         target.rust,
         '--target-dir',
         environment.targetTempDir,
+        ...featureArgs,
       ],
       environment: await _buildEnvironment(),
     );

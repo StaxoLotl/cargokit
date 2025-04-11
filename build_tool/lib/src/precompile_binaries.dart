@@ -39,11 +39,24 @@ class PrecompileBinaries {
   final String? tempDir;
 
   static String fileName(Target target, String name) {
+    // Check if name already includes features
+    if (name.contains('_features_')) {
+      return '${target.rust}_$name';
+    }
+
+    final userOptions = CargokitUserOptions.load();
+    // Include feature context in filename if features are specified
+    if (userOptions.enabledFeatures.isNotEmpty) {
+      // Sort features to ensure consistent naming
+      final sortedFeatures = [...userOptions.enabledFeatures]..sort();
+      final featureStr = sortedFeatures.join('_');
+      return '${target.rust}_${name}_features_$featureStr';
+    }
     return '${target.rust}_$name';
   }
 
   static String signatureFileName(Target target, String name) {
-    return '${target.rust}_$name.sig';
+    return '${fileName(target, name)}.sig';
   }
 
   Future<void> run() async {
