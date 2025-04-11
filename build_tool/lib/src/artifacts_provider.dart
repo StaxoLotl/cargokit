@@ -93,7 +93,7 @@ class ArtifactProvider {
     return result;
   }
 
-  List<String> _generatePossibleArtifactNames(
+  List<String> generatePossibleArtifactNames(
     Target target,
     String libraryName,
     List<String> features,
@@ -151,7 +151,7 @@ class ArtifactProvider {
     final res = <Target, List<Artifact>>{};
 
     for (final target in targets) {
-      final possibleArtifacts = _generatePossibleArtifactNames(
+      final possibleArtifacts = generatePossibleArtifactNames(
         target,
         environment.crateInfo.packageName,
         userOptions.enabledFeatures,
