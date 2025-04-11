@@ -50,6 +50,15 @@ class PrecompileBinaries {
       // Sort features to ensure consistent naming
       final sortedFeatures = [...userOptions.enabledFeatures]..sort();
       final featureStr = sortedFeatures.join('_');
+
+      // Split the name to properly insert features before the extension
+      final lastDotIndex = name.lastIndexOf('.');
+      if (lastDotIndex != -1) {
+        final baseName = name.substring(0, lastDotIndex);
+        final extension = name.substring(lastDotIndex);
+        return '${target.rust}_${baseName}_features_$featureStr$extension';
+      }
+
       return '${target.rust}_${name}_features_$featureStr';
     }
     return '${target.rust}_$name';
