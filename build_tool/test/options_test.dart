@@ -72,4 +72,18 @@ verbose_logging: true
     expect(options.usePrecompiledBinaries, false);
     expect(options.verboseLogging, true);
   });
+
+  test('parseCargokitUserOptions with features', () {
+    const yaml = '''
+use_precompiled_binaries: true
+verbose_logging: false
+features:
+  - foo
+  - bar
+''';
+    final options = CargokitUserOptions.parse(loadYamlNode(yaml));
+    expect(options.usePrecompiledBinaries, true);
+    expect(options.verboseLogging, false);
+    expect(options.enabledFeatures, ['foo', 'bar']);
+  });
 }
